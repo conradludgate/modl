@@ -1,0 +1,26 @@
+module "path1";
+/*include "path2";
+module "path3";*/
+include "path4";
+
+namespace foo
+{
+	struct bar | io.Reader
+	{
+		public int i = 267;
+		float32 f = 0.5;
+		int i = 0x66;
+	}
+
+	public float32 bar.get_f()
+	{
+		return b.f++;
+	}
+}
+
+print(foo::get_f());
+
+int add(int x, y = 2)
+{
+	return x + y;
+}
