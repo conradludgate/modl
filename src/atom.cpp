@@ -63,15 +63,15 @@ std::vector<Token> Atom::Atomise(std::istream& is)
 			char c;
 			is.get(c);
 
-			auto token = Token(p, Token::Atom, 
-				Atom::Exclamation + Atom::operators.find(c));
+			int op = Atom::operators.find(c);
 
-			if (token.rule < Atom::Exclamation)
+			if (op < 0)
 			{
 				std::cout << "UNDEFINED CHARACTER " << c << std::endl;
 			}
 			else
 			{
+				auto token = Token(p, Token::Atom, Atom::Exclamation + op);
 				tokens.push_back(token);
 			}
 		}

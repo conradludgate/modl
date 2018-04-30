@@ -1,12 +1,15 @@
 #pragma once
 
-enum class Op: int
+class Op
 {
+public:
+	enum OpType {
 	// Left Associated
 	InNamespace,   // Left::Right
 	PostIncrement, // Left++
 	PostDecrement, // Left--
 	FunctionCall,  // Left(Right)
+	Parenthesis,   // (Left)
 	ArrayIndex,    // Left[Right]
 	InDot,         // Left.Right
 	// Right Associated
@@ -40,7 +43,7 @@ enum class Op: int
 	InOr,            // Left||Right
 	// Right Associated
 	InAssign,           // Left=Right
-	InSumAssign,        // Left+=Right
+	InAddAssign,        // Left+=Right
 	InSubtractAssign,   // Left-=Right
 	InMultiplyAssign,   // Left*=Right
 	InDivideAssign,     // Left/=Right
@@ -50,7 +53,6 @@ enum class Op: int
 	InBitAndAssign,     // Left&=Right
 	InBitXorAssign,     // Left^=Right
 	InBitOrAssign,      // Left|=Right
-	InComma,            // Left,Right
-
-	None
+	InComma             // Left,Right
+	};
 };

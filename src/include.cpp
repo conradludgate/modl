@@ -41,3 +41,13 @@ bool IncludeClass::Match(std::vector<Token>* tokens) {
 
 	return match;
 }
+
+void IncludeClass::output(std::ostream& o, int rule)
+{
+	if (rule == IncludeClass::Module)
+		o << "Module ";
+	else if (rule == IncludeClass::Include)
+		o << "Include ";
+
+	o << path;
+}

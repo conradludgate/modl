@@ -18,7 +18,8 @@ class IncludeClass
 public:
 	static bool Match(std::vector<Token>* tokens);
 
-	friend std::ostream& operator<<(std::ostream& o, IncludeClass& ic);
+	//friend std::ostream& operator<<(std::ostream& o, IncludeClass& ic);
+	void output(std::ostream& o, int rule);
 
 	enum
 	{
@@ -45,7 +46,7 @@ public:
 		Operation
 	};
 
-	Op rule = Op::None;
+	int rule = -1;
 
 	std::variant<
 		std::string,

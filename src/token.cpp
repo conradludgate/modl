@@ -8,12 +8,12 @@ std::ostream& operator<<(std::ostream& o, Token& t)
 		o << std::get<Expression>(t.value);
 		break;
 	case Token::Include:
-		o << std::get<IncludeClass>(t.value);
+		std::get<IncludeClass>(t.value).output(o, t.rule);
 		break;
 	case Token::Atom:
 		if (t.rule >= Atom::keywords.size())
 		{
-			o << Atom::operators[t.rule - Atom::keywords.size()];
+			o << "Operator: " << t.rule << " " << Atom::operators[t.rule - Atom::keywords.size()];
 		}
 		else
 		{

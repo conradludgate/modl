@@ -1,591 +1,141 @@
 #include "operator.hpp"
 #include "atom.hpp"
 
-#include <map>
+#define AP(X) std::make_pair(Token::Atom, Atom::X)
+#define EP std::make_pair(Token::Expression, -1)
+// #define EPP(X) std::make_pair(Token::Expression, Op::X)
 
-#define EXPR (Token::Expression)
-#define OP (Expression::Operation)
-
-/// This file is a mess... But it works!
-/// Manages the parsing of operation expressions
-
-/// FirstPass manages all postfix and two infix operations
 bool FirstPass(std::vector<Token>* tokens);
-
-/// SecondPass manages all prefix operations
 bool SecondPass(std::vector<Token>* tokens);
-
-/// ThirdPass manages the rest of the infix inline operations
 bool ThirdPass(std::vector<Token>* tokens);
-
-/// FourthPass manages all assignment operations
 bool FourthPass(std::vector<Token>* tokens);
 
 bool Expression::MatchOperator(std::vector<Token>* tokens)
 {
-	if (tokens->size() < 2) {
-		return false;
+	return tokens->size() >= 2
+		&& FirstPass (tokens)
+		|| SecondPass(tokens)
+		|| ThirdPass (tokens)
+		|| FourthPass(tokens);
+}
+
+bool match(int rule, std::vector<std::pair<int, int>> pattern, 
+	std::vector<Token>::iterator start,
+	std::vector<Token>* tokens)
+{
+	std::vector<Expression> exps;
+
+	auto p = pattern.begin();
+	auto end = start + pattern.size();
+	for (auto i = start;
+		p != pattern.end() || i != end;
+		p++, i++)
+	{
+		if (p->first != i->type)
+			return false;
+
+		if (p->second >= 0 && p->second != i->rule)
+			return false;
+
+		if (p->first == Token::Expression)
+			exps.push_back(std::get<Expression>(i->value));
 	}
 
-	// Op::InNamespace - Op::InDot Left to Right
-	if (FirstPass(tokens)) 
+	if (p != pattern.end())
+		return false;
+
+	Expression e;
+	e.rule = rule;
+	e.value = exps;
+
+	start = tokens->insert(start, Token(start->loc, 
+		Token::Expression, Expression::Operation, e));
+	tokens->erase(start+1, start+1+pattern.size());
+}
+
+bool FirstPass(std::vector<Token>* tokens)
+{
+	for (auto i = tokens->begin(); i != tokens->end(); i++)
 	{
-		return true;
-	}
-	// Op::PreIncrement - Op::Prereference Right to Left
-	else if (SecondPass(tokens)) 
-	{
-		return true;
-	} 
-	// Op::InMultiply - Op::InOr Left to Right
-	else if (ThirdPass(tokens)) 
-	{
-		return true;
-	} 
-	// Op::InAssign - Op::InComma Right to Left
-	else if (FourthPass(tokens)) 
-	{
-		return true;
+		if (match(Op::InNamespace, {EP, AP(Colon), AP(Colon), EP}, i, tokens) ||
+			match(Op::PostIncrement, {EP, AP(Plus), AP(Plus)}, i, tokens) ||
+			match(Op::PostDecrement, {EP, AP(Minus), AP(Minus)}, i, tokens) ||
+			match(Op::FunctionCall, {EP, AP(LParen), AP(RParen)}, i, tokens) ||
+			match(Op::FunctionCall, {EP, AP(LParen), EP, AP(RParen)}, i, tokens) ||
+			match(Op::Parenthesis, {AP(LParen), EP, AP(RParen)}, i, tokens) ||
+			match(Op::ArrayIndex, {EP, AP(LBracket), EP, AP(LBracket+2)}, i, tokens) ||
+			match(Op::InDot, {EP, AP(Dot), EP}, i, tokens))
+			return true;
 	}
 
 	return false;
 }
 
-bool FirstPass(std::vector<Token>* tokens)
-{
-	bool match = false;
-	for (auto i = tokens->begin(); i+2 != tokens->end(); i++)
-	{
-		auto j = i + 1;
-		if (i->type != Token::Expression || j->type != Token::Atom)
-			continue;
-
-		auto k = j + 1;
-
-		if (k->type == Token::Atom)
-		{
-			// Expression Atom Atom
-			// Left::Right
-			// Left++
-			// Left--
-			// Left()
-
-			if (j->rule != k->rule)
-			{
-				if (j->rule == Atom::LParen && k->rule == Atom::RParen)
-				{
-					//  Left()
-					match = true;
-					Expression e;
-					e.rule = Op::FunctionCall;
-					auto v = std::vector<Expression>();
-					v.push_back(std::get<Expression>(i->value));
-					e.value = v;
-
-					i = tokens->insert(i, Token(i->loc, EXPR, OP, e));
-					tokens->erase(i+1, i+1+3);
-				}
-				continue;
-			}
-
-			// j->rule == k->rule
-
-			auto l = k + 1;
-			if (l != tokens->end() && l->type == Token::Expression &&
-				j->rule == Atom::Colon)
-			{
-				// Left::Right
-				match = true;
-				Expression e;
-				e.rule = Op::InNamespace;
-				auto v = std::vector<Expression>();
-				v.push_back(std::get<Expression>(i->value));
-				v.push_back(std::get<Expression>(l->value));
-				e.value = v;
-
-				i = tokens->insert(i, Token(i->loc, EXPR, OP, e));
-				tokens->erase(i+1, i+1+4);
-				continue;
-			}
-
-			if (j->rule == Atom::Plus)
-			{
-				// Left++
-				match = true;
-				Expression e;
-				e.rule = Op::PostIncrement;
-				auto v = std::vector<Expression>();
-				v.push_back(std::get<Expression>(i->value));
-				e.value = v;
-
-				i = tokens->insert(i, Token(i->loc, EXPR, OP, e));
-				tokens->erase(i+1, i+1+3);
-				continue;
-			}
-
-			if (j->rule == Atom::Minus)
-			{
-				// Left--
-				match = true;
-				Expression e;
-				e.rule = Op::PostDecrement;
-				auto v = std::vector<Expression>();
-				v.push_back(std::get<Expression>(i->value));
-				e.value = v;
-
-				i = tokens->insert(i, Token(i->loc, EXPR, OP, e));
-				tokens->erase(i+1, i+1+3);
-				continue;
-			}
-		}
-		else if (k->type == EXPR)
-		{
-			// Expression Atom Expression
-			// Left(Right)
-			// Left[Right]
-			// Left.Right
-
-			auto l = k + 1;
-			if (l != tokens->end() && l->type == Token::Atom)
-			{
-				if (j->rule == Atom::LParen && l->rule == Atom::RParen)
-				{
-					// Left(Right)
-					match = true;
-					Expression e;
-					e.rule = Op::FunctionCall;
-					auto v = std::vector<Expression>();
-					v.push_back(std::get<Expression>(i->value));
-					v.push_back(std::get<Expression>(k->value));
-					e.value = v;
-
-					i = tokens->insert(i, Token(i->loc, EXPR, OP, e));
-					tokens->erase(i+1, i+1+4);
-					continue;
-				}
-				else if (j->rule == Atom::LBracket 
-					//&& l->rule == Atom::RBracket)
-					&& l->rule == Atom::LBracket + 2)
-				{
-					// Left[Right]
-					match = true;
-					Expression e;
-					e.rule = Op::ArrayIndex;
-					auto v = std::vector<Expression>();
-					v.push_back(std::get<Expression>(i->value));
-					v.push_back(std::get<Expression>(k->value));
-					e.value = v;
-
-					i = tokens->insert(i, Token(i->loc, EXPR, OP, e));
-					tokens->erase(i+1, i+1+4);
-					continue;
-				}
-			}
-
-			if (j->rule == Atom::Dot)
-			{
-				// Left.Right
-				match = true;
-				Expression e;
-				e.rule = Op::InDot;
-				auto v = std::vector<Expression>();
-				v.push_back(std::get<Expression>(i->value));
-				v.push_back(std::get<Expression>(k->value));
-				e.value = v;
-
-				i = tokens->insert(i, Token(i->loc, EXPR, OP, e));
-				tokens->erase(i+1, i+1+3);
-				continue;
-			}
-		}
-	}
-
-	return match;
-}
-
 bool SecondPass(std::vector<Token>* tokens)
 {
-	bool match = false;
 	for (auto i = tokens->end() - 2; i + 1 != tokens->begin(); i--)
 	{
-		if (i->type != Token::Atom)
-			continue;
-
-		auto j = i + 1;
-		auto right = j + 1;
-		if (j->type == Token::Atom && 
-			right < tokens->end() && right->type == Token::Expression)
-		{
-			if (i->rule == Atom::Plus && j->rule == Atom::Plus)
-			{
-				// ++Right
-				match = true;
-				Expression e;
-				e.rule = Op::PreIncrement;
-				auto v = std::vector<Expression>();
-				v.push_back(std::get<Expression>(right->value));
-				e.value = v;
-
-				i = tokens->insert(i, Token(i->loc, EXPR, OP, e));
-				tokens->erase(i+1, i+1+3);
-				continue;
-			}
-
-			if (i->rule == Atom::Minus && j->rule == Atom::Minus)
-			{
-				// --Right
-				match = true;
-				Expression e;
-				e.rule = Op::PreDecrement;
-				auto v = std::vector<Expression>();
-				v.push_back(std::get<Expression>(right->value));
-				e.value = v;
-
-				i = tokens->insert(i, Token(i->loc, EXPR, OP, e));
-				tokens->erase(i+1, i+1+3);
-				continue;
-			}
-		}
-		else if (j->type == Token::Expression)
-		{
-			if (i->rule == Atom::LParen && i + 4 != tokens->end())
-			{
-				auto k = j + 1;
-				auto right = k + 1;
-				if (k->type == Token::Atom && k->rule == Atom::RParen
-					&& right->type == Token::Expression)
-				{
-					// (j)Right
-					match = true;
-					Expression e;
-					e.rule = Op::TypeCast;
-					auto v = std::vector<Expression>();
-					v.push_back(std::get<Expression>(j->value));
-					v.push_back(std::get<Expression>(right->value));
-					e.value = v;
-
-					i = tokens->insert(i, Token(i->loc, EXPR, OP, e));
-					tokens->erase(i+1, i+1+4);
-					continue;
-				}
-			}
-
-			std::map<int, Op> rules;
-
-			rules[Atom::Plus]        = Op::PrePlus;
-			rules[Atom::Minus]       = Op::PreSubtract;
-			rules[Atom::Exclamation] = Op::PreNot;
-			rules[Atom::Tild]        = Op::PreBitNot;
-			rules[Atom::Hash]        = Op::PreDereference;
-			rules[Atom::At]          = Op::PreReference;
-
-			auto op = rules.find(i->rule);
-			if (op != rules.end())
-			{
-				// _Right
-				match = true;
-				Expression e;
-				e.rule = op->second;
-				auto v = std::vector<Expression>();
-				v.push_back(std::get<Expression>(j->value));
-				e.value = v;
-
-				i = tokens->insert(i, Token(i->loc, EXPR, OP, e));
-				tokens->erase(i+1, i+1+2);
-				continue;
-			}
-			
-		}
-		else if (j->type == Token::Atom 
-			&& j->rule >= Atom::Int && j->rule <= Atom::String)
-		{
-			if (i->rule == Atom::LParen && i + 4 != tokens->end())
-			{
-				auto k = j + 1;
-				auto right = k + 1;
-				if (k->type == Token::Atom && k->rule == Atom::RParen
-					&& right->type == Token::Expression)
-				{
-					// (j)Right
-					match = true;
-					Expression e;
-					e.rule = Op::TypeCast;
-					auto v = std::vector<Expression>();
-					v.push_back(std::get<Expression>(j->value));
-					v.push_back(std::get<Expression>(right->value));
-					e.value = v;
-
-					i = tokens->insert(i, Token(i->loc, EXPR, OP, e));
-					tokens->erase(i+1, i+1+4);
-					continue;
-				}
-			}
-		}
+		if (//match(Op::PreIncrement, {AP(Plus), EPP(PrePlus)}, i, tokens) ||
+			//match(Op::PreDecrement, {AP(Minus), EPP(PreSubtract)}, i, tokens) ||
+			match(Op::PrePlus, {AP(Plus), EP}, i, tokens) ||
+			match(Op::PreSubtract, {AP(Minus), EP}, i, tokens) ||
+			match(Op::PreNot, {AP(Exclamation), EP}, i, tokens) ||
+			match(Op::PreBitNot, {AP(Tild), EP}, i, tokens) ||
+			match(Op::TypeCast, {AP(LBrace), EP, AP(RBrace), EP}, i, tokens) ||
+			match(Op::PreDereference, {AP(Hash), EP}, i, tokens) ||
+			match(Op::PreReference, {AP(At), EP}, i, tokens))
+			return true;
 	}
+
+	return false;
 }
 
 bool ThirdPass(std::vector<Token>* tokens)
 {
-	bool match = false;
-
 	for (auto i = tokens->begin(); i + 2 != tokens->end(); i++)
 	{
-		auto j = i + 1;
-
-		if (i->type == Token::Expression && j->type == Token::Expression)
-		{
-			if (j->rule == OP) 
-			{
-				auto ej = std::get<Expression>(j->value);
-				if (ej.rule == Op::PrePlus)
-				{
-					// i+j
-					match = true;
-					Expression e;
-					e.rule = Op::InAdd;
-					auto v = std::vector<Expression>();
-					v.push_back(std::get<Expression>(i->value));
-					v.push_back(ej);
-					e.value = v;
-
-					i = tokens->insert(i, Token(i->loc, EXPR, OP, e));
-					tokens->erase(i+1, i+1+3);
-				}
-				else if (ej.rule == Op::PreSubtract)
-				{
-					// i-j
-					match = true;
-					Expression e;
-					e.rule = Op::InSubtract;
-					auto v = std::vector<Expression>();
-					v.push_back(std::get<Expression>(i->value));
-					v.push_back(ej);
-					e.value = v;
-
-					i = tokens->insert(i, Token(i->loc, EXPR, OP, e));
-					tokens->erase(i+1, i+1+3);
-				}
-			}
-			continue;
-		}
-
-		if (i->type != Token::Expression || j->type != Token::Atom)
-			continue;
-
-		auto k = j + 1;
-		if (k->type == Token::Expression)
-		{
-			std::map<int, Op> rules;
-
-			rules[Atom::Star]         = Op::InMultiply;
-			rules[Atom::ForwardSlash] = Op::InDivide;
-			rules[Atom::Percent]      = Op::InModulo;
-			rules[Atom::Plus]         = Op::InAdd;
-			rules[Atom::Minus]        = Op::InSubtract;
-			rules[Atom::Less]         = Op::InLessThan;
-			rules[Atom::Greater]      = Op::InGreaterThan;
-			rules[Atom::Ampersand]    = Op::InBitAnd;
-			rules[Atom::Carat]        = Op::InBitXor;
-			rules[Atom::Vertical]     = Op::InBitOr;
-			
-			auto op = rules.find(i->rule);
-			if (op != rules.end())
-			{
-				// i_k
-				match = true;
-				Expression e;
-				e.rule = op->second;
-				auto v = std::vector<Expression>();
-				v.push_back(std::get<Expression>(i->value));
-				v.push_back(std::get<Expression>(k->value));
-				e.value = v;
-
-				i = tokens->insert(i, Token(i->loc, EXPR, OP, e));
-				tokens->erase(i+1, i+1+3);
-				continue;
-			}
-
-		} 
-		else if (i + 3 != tokens->end()) 
-		{
-			auto l = k + 1;
-
-			if (k->type == Token::Atom && l->type == Token::Expression)
-			{
-				std::map<std::pair<int, int>, Op> rules;
-
-				rules[std::make_pair(Atom::Less, Atom::Less)]           = Op::InShiftLeft;
-				rules[std::make_pair(Atom::Greater, Atom::Greater)]     = Op::InShiftRight;
-				rules[std::make_pair(Atom::Less, Atom::Equal)]          = Op::InLessThanEq;
-				rules[std::make_pair(Atom::Greater, Atom::Equal)]       = Op::InGreaterThanEq;
-				rules[std::make_pair(Atom::Equal, Atom::Equal)]         = Op::InEqualTo;
-				rules[std::make_pair(Atom::Exclamation, Atom::Equal)]   = Op::InNotEqualTo;
-				rules[std::make_pair(Atom::Ampersand, Atom::Ampersand)] = Op::InAnd;
-				rules[std::make_pair(Atom::Vertical, Atom::Vertical)]   = Op::InOr;
-
-				auto op = rules.find(std::make_pair(j->rule, k->rule));
-				if (op != rules.end())
-				{
-					// i__l
-					match = true;
-					Expression e;
-					e.rule = op->second;
-					auto v = std::vector<Expression>();
-					v.push_back(std::get<Expression>(i->value));
-					v.push_back(std::get<Expression>(l->value));
-					e.value = v;
-
-					i = tokens->insert(i, Token(i->loc, EXPR, OP, e));
-					tokens->erase(i+1, i+1+3);
-					continue;
-				}
-			}
-		}
+		if (match(Op::InMultiply, {EP, AP(Star), EP}, i, tokens) ||
+			match(Op::InDivide, {EP, AP(ForwardSlash), EP}, i, tokens) ||
+			match(Op::InModulo, {EP, AP(Percent), EP}, i, tokens) ||
+			//match(Op::InAdd, {EP, AP(Plus), EP}, i, tokens) ||
+			//match(Op::InSubtract, {EP, AP(Minus), EP}, i, tokens) ||
+			match(Op::InShiftLeft, {EP, AP(Less), AP(Less), EP}, i, tokens) ||
+			match(Op::InShiftRight, {EP, AP(Greater), AP(Greater), EP}, i, tokens) ||
+			match(Op::InLessThan, {EP, AP(Less), EP}, i, tokens) ||
+			match(Op::InLessThanEq, {EP, AP(Less), AP(Equal), EP}, i, tokens) ||
+			match(Op::InGreaterThan, {EP, AP(Greater), EP}, i, tokens) ||
+			match(Op::InGreaterThanEq, {EP, AP(Greater), AP(Equal), EP}, i, tokens) ||
+			match(Op::InEqualTo, {EP, AP(Equal), AP(Equal), EP}, i, tokens) ||
+			match(Op::InNotEqualTo, {EP, AP(Exclamation), AP(Equal), EP}, i, tokens) ||
+			match(Op::InBitAnd, {EP, AP(Ampersand), EP}, i, tokens) ||
+			match(Op::InBitXor, {EP, AP(Carat), EP}, i, tokens) ||
+			match(Op::InBitOr, {EP, AP(Vertical), EP}, i, tokens) ||
+			match(Op::InAnd, {EP, AP(Ampersand), AP(Ampersand), EP}, i, tokens) ||
+			match(Op::InOr, {EP, AP(Vertical), AP(Vertical), EP}, i, tokens))
+			return true;
 	}
 
-	return match;
+	return false;
 }
 
 bool FourthPass(std::vector<Token>* tokens) 
 {
-	bool match = false;
-
 	for (auto i = tokens->end() - 3; i + 1 != tokens->begin(); i--)
 	{
-		auto j = i + 1;
-
-		if (i->type != Token::Expression || j->type != Token::Atom)
-			continue;
-
-		auto k = j + 1;
-
-		if (k->type == Token::Expression)
-		{
-			if (j->rule == Atom::Equal)
-			{
-				// i=k
-				match = true;
-				Expression e;
-				e.rule = Op::InAssign;
-				auto v = std::vector<Expression>();
-				v.push_back(std::get<Expression>(i->value));
-				v.push_back(std::get<Expression>(k->value));
-				e.value = v;
-
-				i = tokens->insert(i, Token(i->loc, EXPR, OP, e));
-				tokens->erase(i+1, i+1+3);
-			}
-			else if (j->rule == Atom::Comma)
-			{
-				// i,k
-				match = true;
-				Expression e;
-				e.rule = Op::InComma;
-				auto v = std::vector<Expression>();
-				v.push_back(std::get<Expression>(i->value));
-
-				auto ek = std::get<Expression>(k->value);
-				if (ek.rule == Op::InComma)
-				{
-					auto vk = std::get<std::vector<Expression>>(ek.value);
-					v.insert(v.end(), vk.begin(), vk.end());
-				}
-				else
-				{
-					v.push_back(ek);
-				}
-
-				e.value = v;
-
-				i = tokens->insert(i, Token(i->loc, EXPR, OP, e));
-				tokens->erase(i+1, i+1+3);
-			}
-			continue;
-		}
-
-		auto l = k + 1;
-
-		if (k->type != Token::Atom || l == tokens->end())
-			continue;
-
-		if (l->type == Token::Expression
-			&& k->rule == Atom::Equal)
-		{
-			// i_=l
-			Op rule;
-
-			switch (j->rule)
-			{
-			case Atom::Plus:
-				rule = Op::InSumAssign;
-				break;
-			case Atom::Minus:
-				rule = Op::InSubtractAssign;
-				break;
-			case Atom::Star:
-				rule = Op::InMultiplyAssign;
-				break;
-			case Atom::ForwardSlash:
-				rule = Op::InDivideAssign;
-				break;
-			case Atom::Percent:
-				rule = Op::InModuloAssign;
-				break;
-			case Atom::Ampersand:
-				rule = Op::InBitAndAssign;
-				break;
-			case Atom::Carat:
-				rule = Op::InBitXorAssign;
-				break;
-			case Atom::Vertical:
-				rule = Op::InBitOrAssign;
-				break;
-			default:
-				continue;
-			}
-
-			match = true;
-			Expression e;
-			e.rule = rule;
-			auto v = std::vector<Expression>();
-			v.push_back(std::get<Expression>(i->value));
-			v.push_back(std::get<Expression>(l->value));
-			e.value = v;
-
-			i = tokens->insert(i, Token(i->loc, EXPR, OP, e));
-			tokens->erase(i+1, i+1+4);
-
-			continue;
-		}
-
-		auto m = l + 1;
-
-		if (l->type != Token::Atom || m == tokens->end())
-			continue;
-
-		if (m->type == Token::Expression
-			&& l->rule == Atom::Equal)
-		{
-			Op rule;
-			if (j->rule == Atom::Less && k->rule == Atom::Less)
-				rule = Op::InShiftLeftAssign;
-			else if (j->rule == Atom::Greater && k->rule == Atom::Greater)
-				rule = Op::InShiftRightAssign;
-			else
-				continue;
-
-			match = true;
-			Expression e;
-			e.rule = rule;
-			auto v = std::vector<Expression>();
-			v.push_back(std::get<Expression>(i->value));
-			v.push_back(std::get<Expression>(m->value));
-			e.value = v;
-
-			i = tokens->insert(i, Token(i->loc, EXPR, OP, e));
-			tokens->erase(i+1, i+1+5);
-		}
+		if (match(Op::InAssign, {EP, AP(Equal), EP}, i, tokens) ||
+			match(Op::InAddAssign, {EP, AP(Plus), AP(Equal), EP}, i, tokens) ||
+			match(Op::InSubtractAssign, {EP, AP(Minus), AP(Equal), EP}, i, tokens) ||
+			match(Op::InMultiplyAssign, {EP, AP(Star), AP(Equal), EP}, i, tokens) ||
+			match(Op::InDivideAssign, {EP, AP(ForwardSlash), AP(Equal), EP}, i, tokens) ||
+			match(Op::InModuloAssign, {EP, AP(Percent), AP(Equal), EP}, i, tokens) ||
+			match(Op::InShiftLeftAssign, {EP, AP(Less), AP(Less), AP(Equal), EP}, i, tokens) ||
+			match(Op::InShiftRightAssign, {EP, AP(Greater), AP(Greater), AP(Equal), EP}, i, tokens) ||
+			match(Op::InBitAndAssign, {EP, AP(Ampersand), AP(Equal), EP}, i, tokens) ||
+			match(Op::InBitXorAssign, {EP, AP(Carat), AP(Equal), EP}, i, tokens) ||
+			match(Op::InBitOrAssign, {EP, AP(Vertical), AP(Equal), EP}, i, tokens))
+			//match(Op::InComma, {EP, AP(Comma), EP}, i, tokens))
+			return true;
 	}
 
-	return match;
+	return false;
 }

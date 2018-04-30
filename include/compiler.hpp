@@ -12,6 +12,7 @@ public:
 	static void Init()
 	{
 		matchers.push_back(&IncludeClass::Match);
+		matchers.push_back(&Expression::MatchOperator);
 	}
 
 	static std::vector<Token> Compile(std::istream& is)
